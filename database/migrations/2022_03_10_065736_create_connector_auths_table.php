@@ -13,13 +13,9 @@ return new class extends Migration
      */
     public function up()
     {
-        Schema::create('connectors', function (Blueprint $table) {
+        Schema::create('connector_auths', function (Blueprint $table) {
             $table->id();
-            $table->string('name');
-            $table->integer('type');
-            $table->bigInteger('connector_auth_id');
-            $table->text('description')->nullable();
-            $table->text('logo_url')->nullable();
+            $table->string('auth_type_name');
             $table->timestamps();
         });
     }
@@ -31,6 +27,6 @@ return new class extends Migration
      */
     public function down()
     {
-        Schema::dropIfExists('connectors');
+        Schema::dropIfExists('connector_auths');
     }
 };

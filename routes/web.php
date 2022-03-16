@@ -27,3 +27,14 @@ Route::get('/', function () {
 Route::middleware(['auth:sanctum', 'verified'])->get('/dashboard', function () {
     return Inertia::render('Dashboard');
 })->name('dashboard');
+
+
+Route::middleware(['auth:sanctum', 'verified'])->group(function () {
+
+	Route::get('/getschema',[App\Http\Controllers\KoboController::class, 'index'])->name('problems.schema');
+	Route::get('/getdata',[App\Http\Controllers\KoboController::class, 'getData'])->name('problems.data');
+	Route::get('/welcome', function () {
+		return Inertia::render('Welcome_v1');
+	})->name('welcome');
+});
+

@@ -15,6 +15,17 @@ class KoboController extends Controller
     {
         //
         try {
+            
+            
+        }
+        catch (\Exception $e)
+        {
+
+        }
+    }
+    public function DiscoverSchema()
+    {
+        try {
             //My token - 5f8a36355b288bb6f7d65f36a3c6e112a7707567
             //Fairtrade token - 445fff6e62891f56db7235772cce0df7605caad7 - asj6qHgZxYmyqV9x3zmHmW
             //fetch schema from kobo API
@@ -22,19 +33,86 @@ class KoboController extends Controller
             //asset id - 2 repeat groups aUTFHegPoonczSUh7S4hNA
             //one repeat grup aS4CWuK8uM6a6MximvHLNd
             $response = Http::withHeaders([
-                'Authorization' => 'Token 5f8a36355b288bb6f7d65f36a3c6e112a7707567'
+                'Authorization' => 'Token 445fff6e62891f56db7235772cce0df7605caad7'
                 
-            ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/?format=json');
+            ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/asj6qHgZxYmyqV9x3zmHmW/?format=json');
 
             $response_body=json_decode($response->body());
-            //return $response_body->content->survey;
-            $json = '[{}]';
-            $encodedJson = json_decode($json);
-            $encodedJson=$response_body->content->survey;
-            $collection = collect($encodedJson);
-            //return $collection;
-            //check for multiple repeat groups
-            $multiplied = $collection->map(function ($item, $key) {
+            $SurveySchemaResponse=$response_body->content->survey;
+            $SurveySchemaCollection = collect($SurveySchemaResponse);
+            $RepeatGroups=$this->GetRepeatGroupsSchema($SurveySchemaCollection);
+            $SurveySchemaWithoutRepeatGroups=$this->GetSurveySchemaWithoutRepeatGroups($SurveySchemaCollection);
+            $schema['repeat_groups']=$RepeatGroups;
+            $schema['main_survey']=$SurveySchemaWithoutRepeatGroups;
+            return $schema;
+        }
+        catch (\Exception $e)
+        {
+
+        }
+    }
+    
+    public function GetRepeatGroupsSchema($SurveySchemaCollection)
+    {
+        try {
+            //get the repeat group pairs begin_repeat and end_repeat indexes
+            
+            $groups=$this->GetRepeatGroupIndex($SurveySchemaCollection);
+            //extract the repeat groups and questions within only
+            //extract schema without the repeat groups 
+            $SurveySchemaCollectionCopy = $SurveySchemaCollection->collect();
+            $repeat_groups=array();
+            foreach ($groups as $value) { 
+                    //return $value[1];
+                    $numbrs=$value[1]-$value[0]+1;
+                    $intermediate=$SurveySchemaCollection->slice($value[0],$numbrs);
+                   // $SurveySchemaCollectionCopy=$this->GetSurveySchemaWithoutRepeatGroups($SurveySchemaCollectionCopy,$value[0],$numbrs);
+
+                    array_push($repeat_groups,$this->GetRepeatGroupQuestionsOnly($intermediate));
+            }
+            return $repeat_groups;
+            //dd($SurveySchemaCollectionCopy);
+        }
+        catch(\Exception $e)
+        {
+
+        }
+    }
+    public function GetRepeatGroupQuestionsOnly($intermediate)
+    {
+        try {
+            $result = collect($intermediate)->reject(fn ($item) => in_array($item->type, ['begin_repeat', 'end_repeat']));
+            return array_values($result->toArray());
+        }
+        catch(\Exception $e)
+        {
+
+        }
+    }
+    public function GetSurveySchemaWithoutRepeatGroups($SurveySchemaCollection)
+    {
+        try {
+            $groups=$this->GetRepeatGroupIndex($SurveySchemaCollection);
+            $DeleteIndex=array();
+            $DeleteIndexCollect=collect();
+            foreach ($groups as $value) {
+              array_push($DeleteIndex,collect()->range($value[0], $value[1]));
+                
+            }
+            $DeleteIndexCollect=collect($DeleteIndex);
+            $SurveySchemaWithoutGroups = $SurveySchemaCollection->except($DeleteIndexCollect->flatten());
+            return collect($SurveySchemaWithoutGroups->all())->flatten();
+        }
+        catch(\Exception $e)
+        {
+
+        }
+
+    }
+    public function GetRepeatGroupIndex($SurveySchemaCollection)
+    {
+        try {
+            $RepeatGroupPairs = $SurveySchemaCollection->map(function ($item, $key) {
                 if ($item->type=='begin_repeat')
                 {
                     return $key;
@@ -45,54 +123,28 @@ class KoboController extends Controller
                 }
                 
             });
+
             //Remove nulls so only pairs or repeat groups remain;
-            $filtered = $multiplied->filter(function ($value, $key) {
+            $NullFilteredRepeatGroupPairs = $RepeatGroupPairs->filter(function ($value, $key) {
                 return $value !=null;
             });
-            //Create a pair of repeat group;
-            if (count($filtered)>2)
+            //return $RepeatGroupPairs;
+            //Create a pair of repeat group if more than one repeat group;
+            if (count($NullFilteredRepeatGroupPairs)>2)
             {
-                $groups = $filtered->split(2);
+                $groups = $NullFilteredRepeatGroupPairs->split(2);
             }
             else
             {
                 //if just one repeat group exists
-                $groups = $filtered->split(1);
+                $groups = $NullFilteredRepeatGroupPairs->split(1);
                 //return $groups;
             }
-            
-            //extract the repeat groups and questions within only
-            foreach ($groups as $value) { 
-                    //return $value[1];
-                    $numbrs=$value[1]-$value[0]+1;
-                    $intermediate=$collection->slice($value[0],$numbrs);
-                    $result = collect($intermediate)->reject(fn ($item) => in_array($item->type, ['begin_repeat', 'end_repeat']));
-                    return $result;
-                
-            }
-
-            //return array_search("begin_repeat", array_column($encodedJson, 'type'));
-            //array_search("end_repeat", array_column($encodedJson, 'type'));
-            //$collection->search("begin_repeat", array_column($encodedJson, 'type'));
-            //return array_search("end_repeat", array_column($encodedJson, 'type'));
-            $intermediate=$collection->slice(array_search("begin_repeat", array_column($encodedJson, 'type')), array_search("end_repeat", array_column($encodedJson, 'type')));
-            $result = collect($intermediate)->reject(fn ($item) => in_array($item->type, ['begin_repeat', 'end_repeat']));
-            return $result;
-            //Go over the schema and add all the questions
-            //fetch data from kobo api
-            
+            return $groups;
         }
         catch (\Exception $e)
         {
 
-        }
-    }
-    public function check($number){
-        if($number % 2 == 0){
-            return false; 
-        }
-        else{
-            return true;
         }
     }
     public function getData()
@@ -123,7 +175,6 @@ class KoboController extends Controller
 
         }
     }
-
     /**
      * Show the form for creating a new resource.
      *

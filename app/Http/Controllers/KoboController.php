@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\CollectionController;
-
+use App\Http\Controllers\KoboDBControllerController;
+use App\Models\KoboSurvey;
+use App\Models\KoboSurveySchema;
 class KoboController extends Controller
 {
     /**
@@ -52,6 +54,13 @@ class KoboController extends Controller
             ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/');
             
             $response_body=json_decode($response->body());
+            $survey_name=$response_body->name;
+            $asset_id=$response_body->uid;
+            $survey_content_hash=$response_body->version__content_hash;
+            $data['asset_id']=$asset_id;
+            $data['survey_name']=$survey_name;
+            $KoboSurvey=KoboSurvey::updateOrCreate($data);
+            
             //return $response_body;
             $SurveySchemaResponse=$response_body->content->survey;
             $SurveySchemaChoices=$response_body->content->choices;
@@ -66,15 +75,25 @@ class KoboController extends Controller
             $RepeatGroupsWithStdFields=$this->AddStdFieldsToRepeatGroupSchema($RepeatGroups);
             //return $RepeatGroupsWithStdFields;
             $SurveySchemaWithStdFields=$this->AddStdFieldsToNonRepeatGroupSchema($SurveySchemaWithkoboMatrix,$StdFields);
-
+            $SurveySchemaWithStdFieldsRawDBColumn=$this->AddRawDBColumn($SurveySchemaWithStdFields);
             //$SurveySchemaWithStdDataFields=$this->CheckSchemaFieldsWithDataFields($SurveySchemaWithStdFields);
             $schema['repeat_groups']=$RepeatGroupsWithStdFields;
-            $schema['main_survey']=$SurveySchemaWithStdFields;
+            $schema['main_survey']=$SurveySchemaWithStdFieldsRawDBColumn;
+            $SurveySchemaExist = KoboSurveySchema::where('survey_hash', $survey_content_hash)->where('asset_id',$asset_id)->exists();
+            if (!$SurveySchemaExist)
+            {   
+                $survey_schema_id=KoboSurveySchema::create(['kobo_survey_id'=>$KoboSurvey->id,'asset_id'=>$asset_id,'survey_hash'=>$survey_content_hash,'survey_schema_json_original'=>json_encode($response_body),'survey_schema_choices_json_original'=>json_encode($SurveySchemaChoices),'survey_schema_processed'=>json_encode($schema)]);
+            }
+            //dispatch job to bring on data and process the choices
+            $DbJob=new KoboDBControllerController;
+            $ProcessedDBSurvey=$DbJob->ProcessSurveySchema($asset_id, $SurveySchemaWithStdFieldsRawDBColumn);
+            $SchemaInsertStatus=$DbJob->InsertIntoDb($ProcessedDBSurvey, $asset_id, $survey_content_hash);
+            $ChoicesInsertStatus=$DbJob->ProcessSurveySchemaChoices($asset_id, $SchemaInsertStatus, $SurveySchemaChoices);
             return $schema;
         }
         catch (\Exception $e)
         {
-
+            return $e->getMessage();
         }
     }
     public function GetRepeatGroupsSchema($SurveySchemaCollection)
@@ -179,6 +198,12 @@ class KoboController extends Controller
 
                             $GroupNameMatrixRowsColumns[$i]['$autoname']=$GroupNameMatrixRow->db_val.'/'.$GroupNameMatrixRow->db_val.'_'.$MatrixQuestionFlattenedWoSE->{'$autoname'};
                             $GroupNameMatrixRowsColumns[$i]['raw_db_column']=$GroupNameMatrixRow->label[0].'_'.$MatrixQuestionFlattenedWoSE->label[0];
+                            $MatrixQuestionFlattenedWoSEArr=(array)$MatrixQuestionFlattenedWoSE;
+                            if (array_key_exists('select_from_list_name', $MatrixQuestionFlattenedWoSEArr))
+                            {
+                                $GroupNameMatrixRowsColumns[$i]['select_from_list_name']=$MatrixQuestionFlattenedWoSE->select_from_list_name;
+                            }
+                            
                             $i++;
                            
                     }
@@ -333,7 +358,7 @@ class KoboController extends Controller
                 'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
                 'Accept' => 'application/json'
                 
-            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=2');
+            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=50');
 
             
             // $response = Http::withHeaders([
@@ -474,9 +499,36 @@ class KoboController extends Controller
             return $e->getMessage();
         }
     }
-    public function create()
+    public function AddRawDBColumn($SurveyCollection)
     {
-        //
+        try {
+            $SurveyCollectionWRawDbColumn=collect($SurveyCollection)->map(function ($item, $key)  {
+                $item=(array)$item;
+                if (!array_key_exists('raw_db_column',$item))
+                {
+                    if (!array_key_exists('label',$item))
+                    {
+                        if (array_key_exists('$autoname',$item))
+                        {
+                            $item['raw_db_column']=$item['$autoname'];
+                        }
+                        
+                    }
+                    else
+                    {
+                        $item['raw_db_column']=$item['label'][0];
+                    }
+                }
+                return $item;
+
+            });
+            return $SurveyCollectionWRawDbColumn;
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+
     }
 
     /**

@@ -6,8 +6,12 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Http;
 use App\Http\Controllers\CollectionController;
 use App\Http\Controllers\KoboDBControllerController;
+use App\Http\Controllers\MaterializationController;
 use App\Models\KoboSurvey;
 use App\Models\KoboSurveySchema;
+use App\Models\KoboDbColumn;
+use App\Models\KoboDbColumnChoice;
+use Illuminate\Support\Str;
 class KoboController extends Controller
 {
     /**
@@ -37,7 +41,8 @@ class KoboController extends Controller
 
             //asset id - 2 repeat groups aUTFHegPoonczSUh7S4hNA
             //one repeat grup aS4CWuK8uM6a6MximvHLNd
-
+            $database_connection='pgsql_sp'; 
+            $schema_name='oorja';
             $StdFields=[['type' => 'integer', '$autoname'=>'_id'], ['type' => 'string', '$autoname'=>'formhub/uuid'], ['type'=>'string', '$autoname'=>'__version__'],['type'=>'string', '$autoname'=>'meta/instanceID'], ['type'=>'string', '$autoname'=>'_xform_id_string'], ['type'=>'string', '$autoname'=>'_uuid'], ['type'=>'string', '$autoname'=>'_attachments'], ['type'=>'string', '$autoname'=>'_status'], ['type'=>'string', '$autoname'=>'_geolocation'], ['type'=>'string', '$autoname'=>'_submission_time'], ['type'=>'string', '$autoname'=>'_tags'], ['type'=>'string', '$autoname'=>'_notes'], ['type'=>'string', '$autoname'=>'_validation_status'], ['type'=>'string', '$autoname'=>'_submitted_by'],['type'=>'string', '$autoname'=>'meta/deprecatedID']];
 
             //Humanitarian account
@@ -88,7 +93,10 @@ class KoboController extends Controller
             $DbJob=new KoboDBControllerController;
             $ProcessedDBSurvey=$DbJob->ProcessSurveySchema($asset_id, $SurveySchemaWithStdFieldsRawDBColumn);
             $SchemaInsertStatus=$DbJob->InsertIntoDb($ProcessedDBSurvey, $asset_id, $survey_content_hash);
-            $ChoicesInsertStatus=$DbJob->ProcessSurveySchemaChoices($asset_id, $SchemaInsertStatus, $SurveySchemaChoices);
+            $ChoicesInsertStatus=$DbJob->ProcessSurveySchemaChoices($asset_id, $SchemaInsertStatus, $SurveySchemaChoices, $survey_content_hash);
+            $SurveyDBJson=$DbJob->StartMaterialization($asset_id);
+            $MaterializationJob=new MaterializationController;
+            return $AssetMaterializationStatus=$MaterializationJob->createSchema($asset_id, $survey_name, $SurveyDBJson, $database_connection, $schema_name);
             return $schema;
         }
         catch (\Exception $e)
@@ -193,12 +201,21 @@ class KoboController extends Controller
                     foreach ($MatrixQuestionsFlattenedWoSE as $MatrixQuestionFlattenedWoSE)
                     {
                             //return $MatrixQuestionFlattenedWoSE;
+                            $MatrixQuestionFlattenedWoSEArr=(array)$MatrixQuestionFlattenedWoSE;
                             
                             $GroupNameMatrixRowsColumns[$i] =json_decode(json_encode($GroupNameMatrixRow), true);
 
-                            $GroupNameMatrixRowsColumns[$i]['$autoname']=$GroupNameMatrixRow->db_val.'/'.$GroupNameMatrixRow->db_val.'_'.$MatrixQuestionFlattenedWoSE->{'$autoname'};
+                            if (array_key_exists('$given_name', $MatrixQuestionFlattenedWoSEArr))
+                            {
+                                $GroupNameMatrixRowsColumns[$i]['$autoname']=$GroupNameMatrixRow->db_val.'/'.$GroupNameMatrixRow->db_val.'_'.$MatrixQuestionFlattenedWoSE->{'$given_name'};
+                            }
+                            else
+                            {
+                                $GroupNameMatrixRowsColumns[$i]['$autoname']=$GroupNameMatrixRow->db_val.'/'.$GroupNameMatrixRow->db_val.'_'.$MatrixQuestionFlattenedWoSE->{'$autoname'};
+                            }
+                            
                             $GroupNameMatrixRowsColumns[$i]['raw_db_column']=$GroupNameMatrixRow->label[0].'_'.$MatrixQuestionFlattenedWoSE->label[0];
-                            $MatrixQuestionFlattenedWoSEArr=(array)$MatrixQuestionFlattenedWoSE;
+                            
                             if (array_key_exists('select_from_list_name', $MatrixQuestionFlattenedWoSEArr))
                             {
                                 $GroupNameMatrixRowsColumns[$i]['select_from_list_name']=$MatrixQuestionFlattenedWoSE->select_from_list_name;
@@ -358,7 +375,7 @@ class KoboController extends Controller
                 'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
                 'Accept' => 'application/json'
                 
-            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=50');
+            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=125');
 
             
             // $response = Http::withHeaders([
@@ -366,14 +383,145 @@ class KoboController extends Controller
                 
             // ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/?format=json');
             $response_body=json_decode($response->body());
-            return $response_body;
+            $asset_id='ax3tAgSgKwjnGgmpiN2QXb'; 
+            $KoboSurvey=KoboSurvey::where('asset_id', $asset_id)->get();
+            $database_connection='pgsql_sp'; 
+            $schema_name='oorja';
+            //return $KoboSurvey[0]['survey_name'];
+            //$DbJob=new KoboDBControllerController;
+            //$SurveyDBJson=$DbJob->StartMaterialization($asset_id);
+            $first_data=array();
+            foreach ($response_body->results as $result)
+            {   
+                
+                $db_columns=$this->StartMergeWithDBColumns($asset_id, $result, $KoboSurvey[0]['survey_name'], $database_connection, $schema_name);
+                
+            }
+            //$first_data=(array)$response_body->results[1];
+            //return gettype($first_data);
+            //Merge with SurveyDB json
+            
+            //return array_keys($first_data);
+            //return array_diff($db_columns, array_keys($first_data));
+            //  return collect($db_columns_arr)->collapse();
+            
+            //loop over every key and replace with db column
+            //check every value and replace with label
+            //construct the array
+            //insert into table
+            
+            return $db_columns;
             //Go over the schema and add all the questions
             //fetch data from kobo api
             
         }
         catch (\Exception $e)
         {
+            return $e->getMessage();
+        }
+    }
+    public function StartMergeWithDBColumns($assetId, $first_data, $survey_name, $database_connection, $schema_name)
+    {
+        try {
+            $IgnoredColumns=['note','begin_group','end_group','begin_kobomatrix','end_kobomatrix','begin_score','end_score'];
+            $DBTable=KoboDbColumn::whereNotIn('type',$IgnoredColumns)->orwhereNull('type')->where('asset_id',$assetId)->get();
+            $DBTable=collect($DBTable)->pluck('autoname')->toArray();
+            //$DBTableWithColumnTypes=$this->getColumnTypeForMaterialization($DBTable);
+            //$diff = collect(array_keys($first_data))->diff(collect($DBTable));
+            $ProcessedSurveyResponse= $this->ReplaceKeysAndChoicesWithDBOptions($first_data, $DBTable);
+            $InsertStatus=$this->InsertIntoTable($ProcessedSurveyResponse, $database_connection, $schema_name, $survey_name);
+            return $InsertStatus;
+            //return $DBTable;
+            
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
+    public function ReplaceKeysAndChoicesWithDBOptions($first_data, $DBTable)
+    {
+        try {
 
+            $DbData=array();
+            
+            foreach ($first_data as $key=>$value)
+            {
+                foreach ($DBTable as $DBTableColumn)
+                {
+                    if ($DBTableColumn==$key)
+                    {
+                        //return $this->GetDBColumnName($DBTableColumn)[0]['db_column_name'];
+                        $DbColumnName=$this->GetDBColumnName($DBTableColumn)[0]['db_column_name'];
+                        $DbData[$DbColumnName]=$this->GetValueLabel($DBTableColumn, $value);
+                    }
+                    if (Str::of($key)->endsWith($DBTableColumn))
+                    {
+                        $DbColumnName=$this->GetDBColumnName($DBTableColumn)[0]['db_column_name'];
+                        $DbData[$DbColumnName]=$this->GetValueLabel($DBTableColumn, $value);
+                    }
+                    
+                }
+                
+            }
+            return $DbData;
+            
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
+    public function GetDBColumnName($DBTableColumn)
+    {
+        try {
+            return KoboDbColumn::where('autoname',$DBTableColumn)->get(['db_column_name']);
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
+    public function GetValueLabel($DBTableColumn, $value)
+    {
+        try {
+            $list_item=KoboDbColumn::where('autoname',$DBTableColumn)->first();
+            if ($list_item->select_from_list_name)
+            {
+                if ($list_item->type=='select_multiple')
+                {
+                    $collection = Str::of($value)->explode(' ');
+                    $MsLabel=$collection->map(function ($item) use ($list_item) {
+                        $ColumnChoice=KoboDbColumnChoice::where('list_name', $list_item->select_from_list_name)->where('autovalue',$item)->get();
+                        return $ColumnChoice[0]['label'];
+                        
+                    }); 
+                    return $MsLabel->implode('|');
+                }
+                else
+                {
+                    $ColumnChoice=KoboDbColumnChoice::where('list_name', $list_item->select_from_list_name)->where('autovalue',$value)->get();
+                    return $ColumnChoice[0]['label'];
+                }
+                
+            }
+            if ($list_item->kobo_score_choices)
+            {
+                return $value;
+            }
+            if ($list_item->kobo_matrix_list)
+            {
+                return $value;
+            }
+            if (is_array($value) || is_object($value))
+            {
+                return json_encode($value);
+            }
+            return $value;
+        }   
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
         }
     }
     /**
@@ -381,6 +529,20 @@ class KoboController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+    public function InsertIntoTable($ProcessedSurveyResponse, $database_connection, $schema_name, $survey_name)
+    {
+        try {
+            //return $ProcessedSurveyResponse;
+            $MatObj=new MaterializationController;
+            $tableName=$MatObj->getTableNameForCreation($survey_name);
+            $insertStatus=\DB::connection($database_connection)->table($schema_name.".".$tableName)->insert($ProcessedSurveyResponse);
+            return $insertStatus;
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
     public function AddStdFieldsToRepeatGroupSchema($RepeatGroups)
     {
         try {

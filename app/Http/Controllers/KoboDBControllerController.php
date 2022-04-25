@@ -106,7 +106,7 @@ class KoboDBControllerController extends Controller
             return $e->getMessage();
         }
     }
-    public function ProcessSurveySchemaChoices($asset_id, $SurveySchema, $SurveySchemaChoices)
+    public function ProcessSurveySchemaChoices($asset_id, $SurveySchema, $SurveySchemaChoices, $survey_content_hash)
     {
         try {
             //return $SurveySchemaChoices;
@@ -124,7 +124,7 @@ class KoboDBControllerController extends Controller
                 return $ModifiedSurveySchemaChoices;
 
             });
-            $this->InsertChoicesIntoDb($ProcessedSchemaChoices);
+            return $this->InsertChoicesIntoDb($ProcessedSchemaChoices, $survey_content_hash, $asset_id);
             return $ProcessedSchemaChoices;
         }
         catch (\Exception $e)
@@ -132,11 +132,11 @@ class KoboDBControllerController extends Controller
             return $e->getMessage();
         }
     }
-    public function InsertChoicesIntoDb($ProcessedSchemaChoices)
+    public function InsertChoicesIntoDb($ProcessedSchemaChoices, $survey_content_hash, $asset_id)
     {
         try {
             $SurveySchemaExist = KoboSurveySchema::where('survey_hash', $survey_content_hash)->where('asset_id',$asset_id)->exists();
-            if (!$SurveySchemaExist)
+            if ($SurveySchemaExist)
             {
                 $insert_status=KoboDbColumnChoice::insert($ProcessedSchemaChoices->toArray());
                 return 1;
@@ -198,7 +198,7 @@ class KoboDBControllerController extends Controller
         try {
             //$insert_status=KoboDbColumn::insert($ProcessedDBSurvey->toArray());
             $SurveySchemaExist = KoboSurveySchema::where('survey_hash', $survey_content_hash)->where('asset_id',$asset_id)->exists();
-            if (!$SurveySchemaExist)
+            if ($SurveySchemaExist)
             {
                 $insert_status=KoboDbColumn::insert($ProcessedDBSurvey->toArray());
                 if(!$insert_status)
@@ -213,11 +213,65 @@ class KoboDBControllerController extends Controller
             return $e->getMessage();
         }
     }
-    public function index()
+    public function StartMaterialization($assetId)
     {
-        //
+        try {
+            $IgnoredColumns=['note','begin_group','end_group','begin_kobomatrix','end_kobomatrix','begin_score','end_score'];
+            $DBTable=KoboDbColumn::whereNotIn('type',$IgnoredColumns)->orwhereNull('type')->where('asset_id',$assetId)->get();
+            $DBTableWithColumnTypes=$this->getColumnTypeForMaterialization($DBTable);
+            return $DBTableWithColumnTypes;
+            
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
     }
+    public function getColumnTypeForMaterialization($DBTable)
+    {
+        try {
+            $MaterialJson=array();
+            $MaterialQuery=collect($DBTable)->map(function ($item, $key) use ($MaterialJson) {
 
+                $MaterialJson[$item->db_column_name]=$this->getDbColumnType($item->type);
+                return $MaterialJson;
+
+            });
+            return $MaterialQuery;
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
+    public function getDbColumnType($type)
+    {
+        try {
+            //return $type;
+            if (is_null($type) || $type=='text')
+            {
+                return "longText";
+            }
+            if ($type=='select_one' || $type=='string' || $type=='geopoint' || $type=='select_multiple' || $type=='score__row')
+            {
+                return "longText";
+            }
+            if ($type=='integer' || $type=='decimal' ||$type=='integer' || $type=='calculate' )
+            {
+                return "double";
+            }
+            if ($type=='start' || $type=='end' || $type=='datetime')
+            {
+                return "timestamp";
+            }
+            return $type;
+
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
     /**
      * Show the form for creating a new resource.
      *

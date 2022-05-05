@@ -41,8 +41,8 @@ class KoboController extends Controller
 
             //asset id - 2 repeat groups aUTFHegPoonczSUh7S4hNA
             //one repeat grup aS4CWuK8uM6a6MximvHLNd
-            $database_connection='pgsql_sp'; 
-            $schema_name='oorja';
+            $database_connection='pgsql_us'; 
+            $schema_name='public';
             $StdFields=[['type' => 'integer', '$autoname'=>'_id'], ['type' => 'string', '$autoname'=>'formhub/uuid'], ['type'=>'string', '$autoname'=>'__version__'],['type'=>'string', '$autoname'=>'meta/instanceID'], ['type'=>'string', '$autoname'=>'_xform_id_string'], ['type'=>'string', '$autoname'=>'_uuid'], ['type'=>'string', '$autoname'=>'_attachments'], ['type'=>'string', '$autoname'=>'_status'], ['type'=>'string', '$autoname'=>'_geolocation'], ['type'=>'string', '$autoname'=>'_submission_time'], ['type'=>'string', '$autoname'=>'_tags'], ['type'=>'string', '$autoname'=>'_notes'], ['type'=>'string', '$autoname'=>'_validation_status'], ['type'=>'string', '$autoname'=>'_submitted_by'],['type'=>'string', '$autoname'=>'meta/deprecatedID']];
 
             //Humanitarian account
@@ -96,7 +96,7 @@ class KoboController extends Controller
             $ChoicesInsertStatus=$DbJob->ProcessSurveySchemaChoices($asset_id, $SchemaInsertStatus, $SurveySchemaChoices, $survey_content_hash);
             $SurveyDBJson=$DbJob->StartMaterialization($asset_id);
             $MaterializationJob=new MaterializationController;
-            return $AssetMaterializationStatus=$MaterializationJob->createSchema($asset_id, $survey_name, $SurveyDBJson, $database_connection, $schema_name);
+            $AssetMaterializationStatus=$MaterializationJob->createSchema($asset_id, $survey_name, $SurveyDBJson, $database_connection, $schema_name);
             return $schema;
         }
         catch (\Exception $e)
@@ -383,10 +383,12 @@ class KoboController extends Controller
                 
             // ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/?format=json');
             $response_body=json_decode($response->body());
+            //return $response_body->results;
             $asset_id='ax3tAgSgKwjnGgmpiN2QXb'; 
             $KoboSurvey=KoboSurvey::where('asset_id', $asset_id)->get();
-            $database_connection='pgsql_sp'; 
-            $schema_name='oorja';
+            $database_connection='pgsql_us'; 
+            $schema_name='public';
+
             //return $KoboSurvey[0]['survey_name'];
             //$DbJob=new KoboDBControllerController;
             //$SurveyDBJson=$DbJob->StartMaterialization($asset_id);
@@ -500,6 +502,12 @@ class KoboController extends Controller
                 }
                 else
                 {
+                    if (Str::contains($value, ' '))
+                    {
+                        $SplitCollection = Str::of($value)->split('/[\s,]+/');
+                        $PipeSeparatedLables = $this->getPipeSeparatedValueLabel($SplitCollection, $list_item);
+                        return $PipeSeparatedLables;
+                    }
                     $ColumnChoice=KoboDbColumnChoice::where('list_name', $list_item->select_from_list_name)->where('autovalue',$value)->get();
                     return $ColumnChoice[0]['label'];
                 }
@@ -529,6 +537,21 @@ class KoboController extends Controller
      *
      * @return \Illuminate\Http\Response
      */
+    public function getPipeSeparatedValueLabel($SplitCollection, $list_item)
+    {
+        try {
+            $MsLabel=$SplitCollection->map(function ($item) use ($list_item) {
+                        $ColumnChoice=KoboDbColumnChoice::where('list_name', $list_item->select_from_list_name)->where('autovalue',$item)->get();
+                        return $ColumnChoice[0]['label'];
+                        
+            }); 
+            return $MsLabel->implode('|');
+        }
+        catch (\Exception $e)
+        {
+            return $e->getMessage();
+        }
+    }
     public function InsertIntoTable($ProcessedSurveyResponse, $database_connection, $schema_name, $survey_name)
     {
         try {

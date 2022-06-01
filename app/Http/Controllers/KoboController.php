@@ -46,19 +46,20 @@ class KoboController extends Controller
             $StdFields=[['type' => 'integer', '$autoname'=>'_id'], ['type' => 'string', '$autoname'=>'formhub/uuid'], ['type'=>'string', '$autoname'=>'__version__'],['type'=>'string', '$autoname'=>'meta/instanceID'], ['type'=>'string', '$autoname'=>'_xform_id_string'], ['type'=>'string', '$autoname'=>'_uuid'], ['type'=>'string', '$autoname'=>'_attachments'], ['type'=>'string', '$autoname'=>'_status'], ['type'=>'string', '$autoname'=>'_geolocation'], ['type'=>'string', '$autoname'=>'_submission_time'], ['type'=>'string', '$autoname'=>'_tags'], ['type'=>'string', '$autoname'=>'_notes'], ['type'=>'string', '$autoname'=>'_validation_status'], ['type'=>'string', '$autoname'=>'_submitted_by'],['type'=>'string', '$autoname'=>'meta/deprecatedID']];
 
             //Humanitarian account
-            // $response = Http::withHeaders([
-            //     'Authorization' => 'Token 5f8a36355b288bb6f7d65f36a3c6e112a7707567'
+            $response = Http::withHeaders([
+                'Authorization' => 'Token 5f8a36355b288bb6f7d65f36a3c6e112a7707567'
                 
-            // ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aUTFHegPoonczSUh7S4hNA/?format=json');
+            ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/?format=json');
 
             //Researchers account
-            $response = Http::withHeaders([
-                'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
-                'Accept' => 'application/json'
+            // $response = Http::withHeaders([
+            //     'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
+            //     'Accept' => 'application/json'
                 
-            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/');
+            // ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/');
             
             $response_body=json_decode($response->body());
+            //return $response_body;
             $survey_name=$response_body->name;
             $asset_id=$response_body->uid;
             $survey_content_hash=$response_body->version__content_hash;
@@ -73,17 +74,19 @@ class KoboController extends Controller
             $SurveySchemaCollection = collect($SurveySchemaResponse);
             $RepeatGroups=$this->GetRepeatGroupsSchema($SurveySchemaCollection);
             
-            $SurveySchemaWithoutRepeatGroups=$this->GetSurveySchemaWithoutRepeatGroups($SurveySchemaCollection);
+            //$SurveySchemaWithoutRepeatGroups=$this->GetSurveySchemaWithoutRepeatGroups($SurveySchemaCollection);
             //return $SurveySchemaWithoutRepeatGroups;
-            $SurveySchemaWithkoboMatrix=$this->GetSurveySchemaWithKoboMatrixQuestions($SurveySchemaWithoutRepeatGroups, $SurveySchemaChoices);
+            $SurveySchemaWithkoboMatrix=$this->GetSurveySchemaWithKoboMatrixQuestions($SurveySchemaCollection, $SurveySchemaChoices);
             //return $SurveySchemaWithoutRepeatGroups;
             $RepeatGroupsWithStdFields=$this->AddStdFieldsToRepeatGroupSchema($RepeatGroups);
-            //return $RepeatGroupsWithStdFields;
+            //return count($RepeatGroupsWithStdFields);
             $SurveySchemaWithStdFields=$this->AddStdFieldsToNonRepeatGroupSchema($SurveySchemaWithkoboMatrix,$StdFields);
             $SurveySchemaWithStdFieldsRawDBColumn=$this->AddRawDBColumn($SurveySchemaWithStdFields);
+            //return $this->AddRawDBColumn($RepeatGroupsWithStdFields[0]);
             //$SurveySchemaWithStdDataFields=$this->CheckSchemaFieldsWithDataFields($SurveySchemaWithStdFields);
             $schema['repeat_groups']=$RepeatGroupsWithStdFields;
             $schema['main_survey']=$SurveySchemaWithStdFieldsRawDBColumn;
+            return $schema;
             $SurveySchemaExist = KoboSurveySchema::where('survey_hash', $survey_content_hash)->where('asset_id',$asset_id)->exists();
             if (!$SurveySchemaExist)
             {   
@@ -93,11 +96,13 @@ class KoboController extends Controller
             $DbJob=new KoboDBControllerController;
             $ProcessedDBSurvey=$DbJob->ProcessSurveySchema($asset_id, $SurveySchemaWithStdFieldsRawDBColumn);
             $SchemaInsertStatus=$DbJob->InsertIntoDb($ProcessedDBSurvey, $asset_id, $survey_content_hash);
+            //return $SurveySchemaChoices;
             $ChoicesInsertStatus=$DbJob->ProcessSurveySchemaChoices($asset_id, $SchemaInsertStatus, $SurveySchemaChoices, $survey_content_hash);
             $SurveyDBJson=$DbJob->StartMaterialization($asset_id);
+            //return $SurveyDBJson;
             $MaterializationJob=new MaterializationController;
             $AssetMaterializationStatus=$MaterializationJob->createSchema($asset_id, $survey_name, $SurveyDBJson, $database_connection, $schema_name);
-            return $schema;
+            return $AssetMaterializationStatus;
         }
         catch (\Exception $e)
         {
@@ -365,17 +370,17 @@ class KoboController extends Controller
             //OOrja token - 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948 - ax3tAgSgKwjnGgmpiN2QXb
             //fetch schema from kobo API
             //Humanitarian account
-            // $response = Http::withHeaders([
-            //     'Authorization' => 'Token 5f8a36355b288bb6f7d65f36a3c6e112a7707567'
+            $response = Http::withHeaders([
+                'Authorization' => 'Token 5f8a36355b288bb6f7d65f36a3c6e112a7707567'
                 
-            // ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aUTFHegPoonczSUh7S4hNA/data/?format=json&limit=6');
+            ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/data/?format=json&limit=6');
 
             //Researchers account
-            $response = Http::withHeaders([
-                'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
-                'Accept' => 'application/json'
+            // $response = Http::withHeaders([
+            //     'Authorization' => 'Token 1da35c62389c0df4b9e88766bf4e7ab4ebd3d948',
+            //     'Accept' => 'application/json'
                 
-            ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=125');
+            // ])->get('https://kf.kobotoolbox.org/api/v2/assets/ax3tAgSgKwjnGgmpiN2QXb/data/?limit=125');
 
             
             // $response = Http::withHeaders([
@@ -383,7 +388,7 @@ class KoboController extends Controller
                 
             // ])->get('https://kobo.humanitarianresponse.info/api/v2/assets/aS4CWuK8uM6a6MximvHLNd/?format=json');
             $response_body=json_decode($response->body());
-            //return $response_body->results;
+            return $response_body->results;
             $asset_id='ax3tAgSgKwjnGgmpiN2QXb'; 
             $KoboSurvey=KoboSurvey::where('asset_id', $asset_id)->get();
             $database_connection='pgsql_us'; 
@@ -533,7 +538,7 @@ class KoboController extends Controller
         }
     }
     /**
-     * Show the form for creating a new resource.
+     * Function to process multi-select within matrix style questions
      *
      * @return \Illuminate\Http\Response
      */

@@ -4,6 +4,8 @@
 /storage/*.key
 /vendor
 .env
+kobo_response_json
+asset_definition
 .env.backup
 .phpunit.result.cache
 docker-compose.override.yml

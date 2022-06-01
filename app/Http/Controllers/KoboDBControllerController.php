@@ -124,7 +124,7 @@ class KoboDBControllerController extends Controller
                 return $ModifiedSurveySchemaChoices;
 
             });
-            return $this->InsertChoicesIntoDb($ProcessedSchemaChoices, $survey_content_hash, $asset_id);
+            $this->InsertChoicesIntoDb($ProcessedSchemaChoices, $survey_content_hash, $asset_id);
             return $ProcessedSchemaChoices;
         }
         catch (\Exception $e)
@@ -216,8 +216,11 @@ class KoboDBControllerController extends Controller
     public function StartMaterialization($assetId)
     {
         try {
-            $IgnoredColumns=['note','begin_group','end_group','begin_kobomatrix','end_kobomatrix','begin_score','end_score'];
-            $DBTable=KoboDbColumn::whereNotIn('type',$IgnoredColumns)->orwhereNull('type')->where('asset_id',$assetId)->get();
+            $IgnoredColumns=['note','begin_group','end_group','begin_kobomatrix','end_kobomatrix','begin_score','end_score','begin_repeat','end_repeat'];
+            $DBTable=KoboDbColumn::where('asset_id',$assetId)->where(function ($query) use ($IgnoredColumns) {
+                $query->whereNotIn('type',$IgnoredColumns)
+                      ->orwhereNull('type');
+            })->get();
             $DBTableWithColumnTypes=$this->getColumnTypeForMaterialization($DBTable);
             return $DBTableWithColumnTypes;
             
@@ -248,23 +251,70 @@ class KoboDBControllerController extends Controller
     {
         try {
             //return $type;
-            if (is_null($type) || $type=='text')
-            {
-                return "longText";
+
+            switch ($type) {
+                case null:
+                    return "longText";
+                    break;
+                case "text":
+                    return "longText";
+                    break;
+                case "select_one":
+                    return "longText";
+                    break;
+                case "string":
+                    return "longText";
+                    break;
+                case "geopoint":
+                    return "longText";
+                    break;
+                case "select_multiple":
+                    return "longText";
+                    break;
+                case "score__row":
+                    return "longText";
+                    break;
+                case "integer":
+                    return "double";
+                    break;
+                case "decimal":
+                    return "double";
+                    break;
+                case "calculate":
+                    return "double";
+                    break;
+                case "start":
+                    return "timestamp";
+                    break;
+                case "end":
+                    return "timestamp";
+                    break;
+                case "datetime":
+                    return "timestamp";
+                    break;
+                case "today":
+                    return "timestamp";
+                    break;
+                default:
+                    return "longText";
             }
-            if ($type=='select_one' || $type=='string' || $type=='geopoint' || $type=='select_multiple' || $type=='score__row')
-            {
-                return "longText";
-            }
-            if ($type=='integer' || $type=='decimal' ||$type=='integer' || $type=='calculate' )
-            {
-                return "double";
-            }
-            if ($type=='start' || $type=='end' || $type=='datetime')
-            {
-                return "timestamp";
-            }
-            return $type;
+            // if (is_null($type) || $type=='text')
+            // {
+            //     return "longText";
+            // }
+            // if ($type=='select_one' || $type=='string' || $type=='geopoint' || $type=='select_multiple' || $type=='score__row')
+            // {
+            //     return "longText";
+            // }
+            // if ($type=='integer' || $type=='decimal' ||$type=='integer' || $type=='calculate' )
+            // {
+            //     return "double";
+            // }
+            // if ($type=='start' || $type=='end' || $type=='datetime')
+            // {
+            //     return "timestamp";
+            // }
+            // return $type;
 
         }
         catch (\Exception $e)

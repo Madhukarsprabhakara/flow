@@ -29,7 +29,7 @@ class MaterializationController extends Controller
                 $TableExists=$this->createTableInSchema($database_connection, $schema_name, $tableName, $SurveyDBJson);
             }
             return $TableExists;
-            return $SchemaExists;
+            
         }
         catch (\Exception $e)
         {
@@ -67,7 +67,7 @@ class MaterializationController extends Controller
         }
         catch (\Exception $e)
         {
-
+            return $e->getMessage();
         }
     }
     public function checkSchemaExistence($database_connection, $schema_name)
